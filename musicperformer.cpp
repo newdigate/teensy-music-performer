@@ -25,10 +25,17 @@
 #endif
 #pragma endregion
 
+bool ledOn = false;
+
 #pragma region handle midi input
 void handleNoteOn(byte channel, byte pitch, byte velocity)
 {
     Serial.printf("Its alive...ch:%d pitch:%d vel:%d\n", channel, pitch, velocity);
+    ledOn = !ledOn;
+    if (ledOn) {
+        tft.fillScreen(ST7735_GREEN);
+    } else 
+        tft.fillScreen(ST7735_BLACK);
 }
 
 void handleNoteOff(byte channel, byte pitch, byte velocity)
@@ -41,8 +48,8 @@ void setup()
     Serial.begin(9600);
 
     tft.initR(INITR_GREENTAB);
-    tft.fillScreen(ST7735_GREEN);
-    
+    tft.fillScreen(ST7735_BLACK);
+
     // Connect the handleNoteOn function to the library,
     // so it is called upon reception of a NoteOn.
     MIDI.setHandleNoteOn(handleNoteOn);  // Put only the name of the function
@@ -57,14 +64,5 @@ void setup()
 void loop()
 {
     MIDI.read();
+    delayMicroseconds(100);
 }
-
-#ifdef BUILD_FOR_LINUX45555
-int main() {
-    setup();
-    while(true) {        
-        loop();
-        delayMicroseconds(100);
-    }
-}
-#endif
