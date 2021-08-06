@@ -41,9 +41,14 @@ else()
     find_package(teensy_st7735_linux_stubs)
     include_directories(${teensy_st7735_linux_stubs_INCLUDE_DIR})
 
+    find_package(teensy_st7735_linux_opengl)
+    include_directories(${teensy_st7735_linux_extras_opengl_INCLUDE_DIR})
+
+    include(cmake/opengl.cmake.in)
+
     include_directories(/usr/local/include/rtmidi)
 
     add_executable(musicperformer musicperformer.cpp)
     target_link_libraries(musicperformer -L/usr/local/lib/ rtmidi)
-    target_link_libraries(musicperformer ${teensy_x86_midi_stubs_LIBS} ${teensy_x86_stubs_LIBS})
+    target_link_libraries(musicperformer ${teensy_st7735_linux_extras_opengl_LIBS} ${teensy_st7735_linux_stubs_LIBS} ${teensy_x86_midi_stubs_LIBS} ${teensy_x86_stubs_LIBS} ${LIBS})
 endif()
