@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <MIDI.h>
 #include <ST7735_t3.h>
+#include <SD.h>
+#include <smfwriter.h>
+#include <string>
 
 #pragma region midi setup
 #ifdef BUILD_FOR_LINUX
@@ -26,6 +29,9 @@
 #pragma endregion
 
 bool ledOn = false;
+SmfWriter smf;
+unsigned long lastNoteMicros = 0;
+unsigned long microseconds_per_tick;
 
 #pragma region handle midi input
 void handleNoteOn(byte channel, byte pitch, byte velocity)
@@ -36,16 +42,33 @@ void handleNoteOn(byte channel, byte pitch, byte velocity)
         tft.fillScreen(ST7735_GREEN);
     } else 
         tft.fillScreen(ST7735_BLACK);
+
+    unsigned long ms = micros();
+    unsigned long deltaTicks = (ms - lastNoteMicros) / microseconds_per_tick;
+    lastNoteMicros = ms;
+    smf.addEvent(deltaTicks, 0x90, pitch, velocity, channel);
+    smf.flush();
 }
 
 void handleNoteOff(byte channel, byte pitch, byte velocity)
 {
+    unsigned long  ms = micros();
+    unsigned long deltaTicks = (ms - lastNoteMicros)/microseconds_per_tick;
+    lastNoteMicros = ms;
+    smf.addEvent(deltaTicks, 0x80, pitch, velocity, channel);
+    smf.flush();
 }
 #pragma endregion
 
+const double TEMPO = 120.0;
+
 void setup()
 {
+    lastNoteMicros = micros(); 
+    microseconds_per_tick = SmfWriter::get_microseconds_per_tick(TEMPO);
     Serial.begin(9600);
+    const std::string outputPath = "output"; 
+    SD.setSDCardFolderPath(outputPath);
 
     tft.initR(INITR_GREENTAB);
     tft.fillScreen(ST7735_BLACK);
@@ -59,6 +82,12 @@ void setup()
 
     // Initiate MIDI communications, listen to all channels
     MIDI.begin(MIDI_CHANNEL_OMNI);
+
+    smf.setFilename("test");
+    smf.writeHeader();
+
+    // start the midi recording timing from now
+
 }
 
 void loop()
