@@ -28,43 +28,97 @@
 #endif
 #pragma endregion
 
+const double TEMPO = 120.0;
 bool ledOn = false;
 SmfWriter smf;
 unsigned long lastNoteMicros = 0;
 unsigned long microseconds_per_tick;
+bool isRecording = false;
 
-#pragma region handle midi input
-void handleNoteOn(byte channel, byte pitch, byte velocity)
-{
-    Serial.printf("Its alive...ch:%d pitch:%d vel:%d\n", channel, pitch, velocity);
+unsigned long getDeltaTicks() {
+    unsigned long ms = micros();
+    unsigned long deltaTicks = (ms - lastNoteMicros) / microseconds_per_tick;
+    lastNoteMicros = ms;
+    return deltaTicks;
+}
+
+void toggleScreen() {
+    // just a visual confirmation that we've received input from the midi controller
     ledOn = !ledOn;
     if (ledOn) {
         tft.fillScreen(ST7735_GREEN);
     } else 
         tft.fillScreen(ST7735_BLACK);
+}
 
-    unsigned long ms = micros();
-    unsigned long deltaTicks = (ms - lastNoteMicros) / microseconds_per_tick;
-    lastNoteMicros = ms;
-    smf.addEvent(deltaTicks, 0x90, pitch, velocity, channel);
-    smf.flush();
+void startRecording() {
+    if (!isRecording) {
+        smf.setFilename("test");
+        smf.writeHeader();
+
+        Serial.printf("writing to file: %s\n", smf.getFilename() );
+
+        // start the midi recording timing from now
+        lastNoteMicros = micros();
+        isRecording = true; 
+    }
+}
+
+void stopRecording() {
+    if (isRecording) {
+        isRecording = false;
+        smf.addEndofTrack(0, 0);
+        smf.flush();
+        Serial.printf("recoring completed: %s\n", smf.getFilename() );
+    }
+}
+
+#pragma region handle midi input
+void handleNoteOn(byte channel, byte pitch, byte velocity)
+{
+    toggleScreen();
+    if (isRecording) {
+        smf.addNoteOnEvent(getDeltaTicks(), pitch, velocity, channel);
+        smf.flush();
+    }
 }
 
 void handleNoteOff(byte channel, byte pitch, byte velocity)
 {
-    unsigned long  ms = micros();
-    unsigned long deltaTicks = (ms - lastNoteMicros)/microseconds_per_tick;
-    lastNoteMicros = ms;
-    smf.addEvent(deltaTicks, 0x80, pitch, velocity, channel);
-    smf.flush();
+    toggleScreen();
+    if (isRecording) {
+        smf.addNoteOffEvent(getDeltaTicks(), pitch, channel);
+        smf.flush();
+    }
 }
-#pragma endregion
 
-const double TEMPO = 120.0;
+void handleControlChange(byte channel, byte control, byte value) {
+    if (isRecording) {
+        smf.addControlChange(getDeltaTicks(), control, value, channel);
+        smf.flush();
+    }
+}
+
+void handleProgramChange(byte channel, byte program) {
+    if (isRecording) {
+        smf.addProgramChange(getDeltaTicks(), program, channel);
+        smf.flush();
+    }
+}
+
+void handleMIDIStartMessage() {
+    startRecording();
+}
+
+void handleMIDIStopMessage() {
+    stopRecording();
+}
+
+#pragma endregion
 
 void setup()
 {
-    lastNoteMicros = micros(); 
+    
     microseconds_per_tick = SmfWriter::get_microseconds_per_tick(TEMPO);
     Serial.begin(9600);
     const std::string outputPath = "output"; 
@@ -76,22 +130,29 @@ void setup()
     // Connect the handleNoteOn function to the library,
     // so it is called upon reception of a NoteOn.
     MIDI.setHandleNoteOn(handleNoteOn);  // Put only the name of the function
-
     // Do the same for NoteOffs
     MIDI.setHandleNoteOff(handleNoteOff);
+    MIDI.setHandleControlChange(handleControlChange);
+    MIDI.setHandleProgramChange(handleProgramChange);
+    MIDI.setHandleStart(handleMIDIStartMessage);
+    MIDI.setHandleStop(handleMIDIStopMessage);
 
     // Initiate MIDI communications, listen to all channels
     MIDI.begin(MIDI_CHANNEL_OMNI);
-
-    smf.setFilename("test");
-    smf.writeHeader();
-
-    // start the midi recording timing from now
-
 }
+
 
 void loop()
 {
     MIDI.read();
+    if (Serial.available()) {
+        int ch = Serial.read();
+        switch (ch) {
+            case 'R' :
+            case 'r' : startRecording(); break;
+            case 'S' :
+            case 's' : stopRecording(); break;
+        }
+    }
     delayMicroseconds(100);
 }
